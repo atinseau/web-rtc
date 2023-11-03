@@ -12,19 +12,6 @@ const firebaseConfig = {
   measurementId: "G-7M8TSGEXBT"
 };
 
-let app: FirebaseApp
-let db: Firestore
 
-export function initFirebase() {
-  if (!app) {
-    app = initializeApp(firebaseConfig);
-  }
-  return app;
-}
-
-export function initFirestore() {
-  if (!db) {
-    db = getFirestore(initFirebase())
-  }
-  return db
-}
+export const app = initializeApp(firebaseConfig);
+export const db = getFirestore(app)

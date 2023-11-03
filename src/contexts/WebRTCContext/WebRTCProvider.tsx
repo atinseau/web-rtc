@@ -8,13 +8,24 @@ type WebRTCProviderProps = {
   children: React.ReactNode
 }
 
+const servers = {
+  iceServers: [
+    {
+      urls: ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302']
+    }
+  ],
+  iceCandidatePoolSize: 10
+}
+
 export const webRTCStore = createStore()
 
 export default function WebRTCProvider({ children }: WebRTCProviderProps) {
 
   useEffect(() => {
     if (!webRTCStore.get(peerConnectionAtom)) {
-      webRTCStore.set(peerConnectionAtom, new RTCPeerConnection())
+      const peerConnection = new RTCPeerConnection(servers)
+
+      webRTCStore.set(peerConnectionAtom, peerConnection)
     }
 
     return () => {
