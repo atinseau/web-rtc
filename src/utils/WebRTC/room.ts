@@ -1,11 +1,13 @@
 'use client';
 
 import { webRTCStore } from "@/contexts/WebRTCContext/WebRTCProvider";
-import { currentRoomIdAtom, peerConnectionAtom } from "@/contexts/WebRTCContext/atoms";
+import { currentRoomIdAtom, localStreamAtom, peerConnectionAtom, remoteStreamAtom } from "@/contexts/WebRTCContext/atoms";
 
 import { db } from "../firebase";
 import { addDoc, collection, doc, getDoc, onSnapshot, setDoc, updateDoc } from "firebase/firestore";
-import { set } from "firebase/database";
+
+import adapter from 'webrtc-adapter';
+
 
 const roomsCollection = collection(db, 'rooms')
 
@@ -20,11 +22,58 @@ type RoomAnswer = {
   answer: RTCSessionDescriptionInit
 }
 
+const generateStream = async () => {
+
+  let stream: MediaStream | null = null
+
+  console.log(adapter.browserDetails.browser)
+
+  if (adapter.browserDetails.browser === "chrome") {
+    if (navigator?.mediaDevices?.getDisplayMedia) {
+      stream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+      })
+    } else if (navigator?.mediaDevices?.getUserMedia) {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+      })
+    }
+  }
+
+  alert(navigator.getUserMedia)
+
+
+  return stream
+}
+
 async function createRoom() {
   const peerConnection = webRTCStore.get(peerConnectionAtom)
   if (!peerConnection) {
     throw new Error('Peer connection is not defined')
   }
+
+  const localStream = await generateStream()
+
+  if (!localStream) {
+    throw new Error('Local stream is not defined')
+  }
+
+  localStream.getTracks().forEach((track) => {
+    peerConnection.addTrack(track, localStream)
+  })
+  webRTCStore.set(localStreamAtom, localStream)
+
+
+  const remoteStream = new MediaStream()
+  peerConnection.ontrack = (event) => {
+    event.streams[0].getTracks().forEach((track) => {
+      remoteStream?.addTrack(track)
+    })
+  }
+  webRTCStore.set(remoteStreamAtom, remoteStream)
+
+
+
 
   const roomDoc = doc(roomsCollection)
 
@@ -59,21 +108,14 @@ async function createRoom() {
     if (!peerConnection.currentRemoteDescription && 'answer' in data && data.answer) {
       const answerDescription = new RTCSessionDescription(data.answer)
       peerConnection.setRemoteDescription(answerDescription)
-
-      console.log('setRemoteDescription', answerDescription)
     }
   })
 
 
   onSnapshot(answerCandidatesCollection, (snapshot) => {
-
-    console.log('answerCandidatesCollection', snapshot)
-
     snapshot.docChanges().forEach((change) => {
-
-      console.log('answerCandidatesCollection change', change)
-
       if (change.type === "added") {
+        console.log("Getting candidates from remote peer", change.doc.data())
         const candidate = new RTCIceCandidate(change.doc.data())
         peerConnection.addIceCandidate(candidate)
       }
@@ -89,6 +131,18 @@ async function joinRoom(formData: FormData) {
     throw new Error('Peer connection is not defined')
   }
 
+  const localStream = await generateStream()
+
+  if (!localStream) {
+    throw new Error('Local stream is not defined')
+  }
+
+  localStream.getTracks().forEach((track) => {
+    peerConnection.addTrack(track, localStream)
+  })
+  webRTCStore.set(localStreamAtom, localStream)
+
+
   const roomId = formData.get('roomId') as string
   const roomDoc = doc(roomsCollection, roomId)
   const answerCandidatesCollection = collection(db, 'rooms', roomDoc.id, 'answerCandidates')
@@ -102,6 +156,17 @@ async function joinRoom(formData: FormData) {
   if (!data) {
     throw new Error('Room does not exist')
   }
+
+  const remoteStream = new MediaStream()
+
+  peerConnection.ontrack = (event) => {
+    event.streams[0].getTracks().forEach((track) => {
+      console.log('set track to remote stream', track)
+      remoteStream.addTrack(track)
+    })
+  }
+
+  webRTCStore.set(remoteStreamAtom, remoteStream)
 
   await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer))
 
@@ -132,7 +197,12 @@ async function joinRoom(formData: FormData) {
 }
 
 
+async function exitRoom() {
+  webRTCStore.set(currentRoomIdAtom, null)
+}
+
 export {
   createRoom,
-  joinRoom
+  joinRoom,
+  exitRoom
 }
