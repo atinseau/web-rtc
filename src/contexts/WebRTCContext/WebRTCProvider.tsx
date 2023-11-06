@@ -1,8 +1,9 @@
 'use client';
 
 import { Provider, createStore } from "jotai"
-import { peerConnectionAtom } from "./atoms";
+import { peerConnectionAtom, routerAtom } from "./atoms";
 import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 
 type WebRTCProviderProps = {
   children: React.ReactNode
@@ -21,10 +22,11 @@ export const webRTCStore = createStore()
 
 export default function WebRTCProvider({ children }: WebRTCProviderProps) {
 
+  const router = useRouter()
+
   useEffect(() => {
     if (!webRTCStore.get(peerConnectionAtom)) {
       const peerConnection = new RTCPeerConnection(servers)
-
       webRTCStore.set(peerConnectionAtom, peerConnection)
     }
 
@@ -32,6 +34,10 @@ export default function WebRTCProvider({ children }: WebRTCProviderProps) {
       webRTCStore.set(peerConnectionAtom, null)
     }
   }, [])
+
+  useEffect(() => {
+    webRTCStore.set(routerAtom, router)
+  }, [router])
 
   return <Provider store={webRTCStore}>
     {children}

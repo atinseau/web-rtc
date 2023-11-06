@@ -1,18 +1,13 @@
 'use client';
 
 import { webRTCStore } from "@/contexts/WebRTCContext/WebRTCProvider";
-import { currentRoomIdAtom, localStreamAtom, peerConnectionAtom, remoteStreamAtom } from "@/contexts/WebRTCContext/atoms";
+import { currentRoomIdAtom, listModalAtom, localStreamAtom, peerConnectionAtom, remoteStreamAtom, routerAtom } from "@/contexts/WebRTCContext/atoms";
 
 import { db } from "../firebase";
 import { addDoc, collection, doc, getDoc, onSnapshot, setDoc, updateDoc } from "firebase/firestore";
 
-import adapter from 'webrtc-adapter';
 
-
-const roomsCollection = collection(db, 'rooms')
-
-const roomOfferCollection = null
-const roomAnswerCollection = null
+export const roomsCollection = collection(db, 'rooms')
 
 type RoomOffer = {
   offer: RTCSessionDescriptionInit
@@ -26,22 +21,28 @@ const generateStream = async () => {
 
   let stream: MediaStream | null = null
 
-  console.log(adapter.browserDetails.browser)
 
-  if (adapter.browserDetails.browser === "chrome") {
-    if (navigator?.mediaDevices?.getDisplayMedia) {
-      stream = await navigator.mediaDevices.getDisplayMedia({
-        video: true,
-      })
-    } else if (navigator?.mediaDevices?.getUserMedia) {
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-      })
-    }
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: true,
+      audio: true,
+    })
+  } catch (error) {
+    console.error('Error accessing media devices.', error)
   }
 
-  alert(navigator.getUserMedia)
+  if (stream) {
+    return stream
+  }
 
+  try {
+    stream = await navigator.mediaDevices.getDisplayMedia({
+      video: true,
+      audio: true,
+    })
+  } catch (e) {
+    console.error('Error accessing media devices.', e)
+  }
 
   return stream
 }
@@ -100,6 +101,7 @@ async function createRoom() {
 
   await setDoc(roomDoc, roomWithOffer)
   webRTCStore.set(currentRoomIdAtom, roomId)
+  webRTCStore.get(routerAtom)?.push('/rooms/' + roomId)
 
   // Listen for remote answer
   onSnapshot(roomDoc, async (snapshot) => {
@@ -125,10 +127,16 @@ async function createRoom() {
 }
 
 
-async function joinRoom(formData: FormData) {
+async function joinRoom(formData: FormData | null, room?: string) {
   const peerConnection = webRTCStore.get(peerConnectionAtom)
   if (!peerConnection) {
     throw new Error('Peer connection is not defined')
+  }
+
+  
+  const roomId = formData ? formData.get('roomId') as string : room
+  if (!roomId || !roomId.length) {
+    throw new Error('Room id is not defined')
   }
 
   const localStream = await generateStream()
@@ -143,7 +151,7 @@ async function joinRoom(formData: FormData) {
   webRTCStore.set(localStreamAtom, localStream)
 
 
-  const roomId = formData.get('roomId') as string
+
   const roomDoc = doc(roomsCollection, roomId)
   const answerCandidatesCollection = collection(db, 'rooms', roomDoc.id, 'answerCandidates')
   const offerCandidatesCollection = collection(db, 'rooms', roomDoc.id, 'offerCandiates')
@@ -180,7 +188,10 @@ async function joinRoom(formData: FormData) {
     }
   }
   await updateDoc(roomDoc, roomAnswer)
+  
   webRTCStore.set(currentRoomIdAtom, roomId)
+  webRTCStore.get(routerAtom)?.push('/rooms/' + roomId)
+
 
   onSnapshot(offerCandidatesCollection, (snapshot) => {
 
@@ -199,10 +210,16 @@ async function joinRoom(formData: FormData) {
 
 async function exitRoom() {
   webRTCStore.set(currentRoomIdAtom, null)
+  webRTCStore.get(routerAtom)?.push('/')
+}
+
+async function toggleListModal() {
+  webRTCStore.set(listModalAtom, !webRTCStore.get(listModalAtom))
 }
 
 export {
   createRoom,
   joinRoom,
-  exitRoom
+  exitRoom,
+  toggleListModal
 }
