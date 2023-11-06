@@ -1,3 +1,4 @@
+import { Analytics } from '@vercel/analytics/react';
 import { WebRTCProvider } from '@/contexts/WebRTCContext'
 import '../styles/globals.css'
 
@@ -12,6 +13,7 @@ export default function RootLayout({
         <WebRTCProvider>
           {children}
         </WebRTCProvider>
+        <Analytics/>
       </body>
     </html>
   )
